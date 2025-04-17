@@ -2,14 +2,14 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Transformer, Text, Image } from 'react-konva';
 import useImage from 'use-image';
 
-
-const Canvas = ({ 
-  elements, 
-  selectedElement, 
-  setSelectedElement, 
-  onElementChange, 
+const Canvas = ({
+  elements,
+  selectedElement,
+  setSelectedElement,
+  onElementChange,
   onDeleteElement,
-  cursorPosition // From the second file for gesture support
+  cursorPosition,
+  onAddElement // Add this prop
 }) => {
   const stageRef = useRef(null);
   const transformerRef = useRef(null);
@@ -22,8 +22,57 @@ const Canvas = ({
   const lastUpdateTimeRef = useRef(0);
   const throttledUpdateTimeRef = useRef(0);
   const THROTTLE_TIME = 100; // ms
-  const [extractedColors, setExtractedColors] = useState([]);
-  const [selectedColor, setSelectedColor] = useState(null);
+
+  // Add drag and drop handlers
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Handle both dragged files and dragged images
+    if (e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (!file || !file.type.startsWith('image/')) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const stageBox = stageRef.current.container().getBoundingClientRect();
+        const dropX = e.clientX - stageBox.left;
+        const dropY = e.clientY - stageBox.top;
+
+        onAddElement({
+          type: 'image',
+          url: event.target.result,
+          x: dropX,
+          y: dropY,
+          width: 200,
+          height: 150,
+          alt: file.name
+        });
+      };
+      reader.readAsDataURL(file);
+    } else if (e.dataTransfer.getData('text/uri-list')) {
+      // Handle dragged image URLs
+      const imageUrl = e.dataTransfer.getData('text/uri-list');
+      const stageBox = stageRef.current.container().getBoundingClientRect();
+      const dropX = e.clientX - stageBox.left;
+      const dropY = e.clientY - stageBox.top;
+
+      onAddElement({
+        type: 'image',
+        url: imageUrl,
+        x: dropX,
+        y: dropY,
+        width: 200,
+        height: 150,
+        alt: 'Dragged image'
+      });
+    }
+  }, [onAddElement, stageRef]);
 
   // Memoized element change handler with improved throttling
   const handleElementChange = useCallback((updatedElement) => {
@@ -33,13 +82,13 @@ const Canvas = ({
       // Skip updates that are too close together
       return;
     }
-    
+
     throttledUpdateTimeRef.current = now;
-    
+
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-    
+
     animationFrameRef.current = requestAnimationFrame(() => {
       onElementChange(updatedElement);
     });
@@ -48,7 +97,7 @@ const Canvas = ({
   // Update transformer when selected element changes
   useEffect(() => {
     if (!transformerRef.current || !selectedElement || !stageRef.current) return;
-    
+
     const selectedNode = stageRef.current.findOne(`#${selectedElement.id}`);
     if (selectedNode) {
       transformerRef.current.nodes([selectedNode]);
@@ -65,7 +114,7 @@ const Canvas = ({
         onDeleteElement(selectedElement.id);
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedElement, onDeleteElement]);
@@ -73,7 +122,7 @@ const Canvas = ({
   // Handle window resize with more aggressive debounce
   useEffect(() => {
     let resizeTimeout;
-    
+
     const handleResize = () => {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
@@ -84,7 +133,7 @@ const Canvas = ({
         }
       }, 200); // More aggressive debounce (200ms)
     };
-    
+
     handleResize(); // Initial setup
     window.addEventListener('resize', handleResize);
     return () => {
@@ -131,7 +180,7 @@ const Canvas = ({
         textarea.style.transformOrigin = 'left top';
         textarea.style.textAlign = textNode.align() || 'left';
         textarea.style.color = textNode.fill() || '#000000';
-        
+
         // Clear placeholder text if it's still there
         const elementId = parseInt(textNode.id());
         const element = elements.find(el => el.id === elementId);
@@ -140,9 +189,9 @@ const Canvas = ({
           element.text === 'Double-click to edit subheading' ||
           element.text === 'Double-click to edit text'
         );
-        
+
         textarea.value = isPlaceholder ? '' : textNode.text();
-        
+
         // Apply font styles
         const fontStyle = textNode.fontStyle();
         if (fontStyle === 'italic') {
@@ -150,7 +199,7 @@ const Canvas = ({
         } else {
           textarea.style.fontStyle = 'normal';
         }
-        
+
         textarea.style.fontWeight = textNode.fontStyle() === 'bold' ? 'bold' : 'normal';
         textarea.style.textDecoration = textNode.textDecoration() || 'none';
 
@@ -167,7 +216,7 @@ const Canvas = ({
 
         // Focus on the textarea and select all text
         textarea.focus();
-        
+
         // Handle text editing complete on Enter key
         textarea.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
@@ -190,13 +239,13 @@ const Canvas = ({
   // Virtual cursor effect from hand gesture with better throttling (from second file)
   useEffect(() => {
     if (!cursorPosition || !stageRef.current) return;
-    
+
     const now = performance.now();
     if (now - lastUpdateTimeRef.current < 50) { // Reduced to 20fps from 60fps for better performance
       return;
     }
     lastUpdateTimeRef.current = now;
-    
+
     // Store the cursor position for gesture comparison
     lastCursorPositionRef.current = cursorPosition;
   }, [cursorPosition]);
@@ -207,7 +256,7 @@ const Canvas = ({
     const handleGestureEvent = (event) => {
       const { detail } = event;
       if (!detail) return;
-      
+
       switch (detail.type) {
         case 'pinch_start':
           setIsGesturePinching(true);
@@ -219,19 +268,19 @@ const Canvas = ({
           break;
       }
     };
-    
+
     // Element resize event handler
     const handleElementResize = (event) => {
       const { detail } = event;
       if (!detail || !detail.element) return;
-      
+
       // This event comes from GestureDetector
       handleElementChange(detail.element);
     };
-    
+
     window.addEventListener('gesture_detected', handleGestureEvent);
     window.addEventListener('element_resize', handleElementResize);
-    
+
     return () => {
       window.removeEventListener('gesture_detected', handleGestureEvent);
       window.removeEventListener('element_resize', handleElementResize);
@@ -251,11 +300,11 @@ const Canvas = ({
   const finishEditing = (textarea, textNode) => {
     const elementId = parseInt(textNode.id());
     const element = elements.find(el => el.id === elementId);
-    
+
     if (element) {
       // Don't allow empty text
       const newText = textarea.value.trim() || "Text";
-      
+
       handleElementChange({
         ...element,
         text: newText,
@@ -264,7 +313,7 @@ const Canvas = ({
         height: Math.max(element.height, textarea.scrollHeight)
       });
     }
-    
+
     setEditingText(null);
   };
 
@@ -272,46 +321,65 @@ const Canvas = ({
   const handleSelectElement = useCallback((e) => {
     const clickedOnEmpty = e.target === e.target.getStage();
     if (clickedOnEmpty) {
-      // Don't deselect when clicking on empty area
+      setSelectedElement(null);
       return;
     }
 
     const elementId = parseInt(e.target.id());
     const element = elements.find(el => el.id === elementId);
-    
+
     // If it's a text element and double-click, enter edit mode
     if (element && element.type === 'text' && e.evt.detail === 2) {
       setEditingText(elementId.toString());
     }
-    
+
     setSelectedElement(element);
   }, [elements, setSelectedElement]);
 
-  const handleDragStart = (e) => {
-    const id = e.target.id();
-    setSelectedElement(elements.find(el => el.id === parseInt(id)));
-  };
+  const handleDragStart = useCallback((e) => {
+    const elementId = parseInt(e.target.id());
+    const element = elements.find(el => el.id === elementId);
+    if (!element) return;
 
-  const handleDragEnd = (e) => {
-    const id = e.target.id();
-    const element = elements.find(el => el.id === parseInt(id));
-    if (element) {
-      const updatedElement = {
-        ...element,
-        x: e.target.x(),
-        y: e.target.y()
-      };
-      handleElementChange(updatedElement);
+    // Don't start drag if we're editing text
+    if (editingText === elementId.toString()) {
+      return;
     }
-  };
+
+    // Set selected element when starting to drag
+    setSelectedElement(element);
+
+    // Set dragging state
+    handleElementChange({
+      ...element,
+      isDragging: true
+    });
+  }, [elements, editingText, handleElementChange, setSelectedElement]);
+
+  const handleDragEnd = useCallback((e) => {
+    const elementId = parseInt(e.target.id());
+    const element = elements.find(el => el.id === elementId);
+    if (!element) return;
+
+    // Update element position after drag
+    const updatedElement = {
+      ...element,
+      isDragging: false,
+      x: e.target.x(),
+      y: e.target.y()
+    };
+
+    // Apply the changes
+    handleElementChange(updatedElement);
+  }, [elements, handleElementChange]);
 
   const handleTransformEnd = useCallback((e) => {
     const elementId = parseInt(e.target.id());
     const element = elements.find(el => el.id === elementId);
     if (!element) return;
-    
+
     const node = e.target;
-    
+
     if (element.type === 'text') {
       // For text elements
       handleElementChange({
@@ -322,7 +390,7 @@ const Canvas = ({
         height: Math.max(node.height() * node.scaleY(), 20), // Minimum height for text
         fontSize: element.fontSize * node.scaleY(),
       });
-      
+
       // Reset scale after updating width and height
       node.scaleX(1);
       node.scaleY(1);
@@ -330,7 +398,7 @@ const Canvas = ({
       // For custom shapes, we need to apply the scale to each point
       const scaleX = node.scaleX();
       const scaleY = node.scaleY();
-      
+
       handleElementChange({
         ...element,
         x: node.x(),
@@ -347,7 +415,7 @@ const Canvas = ({
         width: node.width() * node.scaleX(),
         height: node.height() * node.scaleY(),
       });
-      
+
       // Reset scale after updating width and height
       node.scaleX(1);
       node.scaleY(1);
@@ -360,7 +428,7 @@ const Canvas = ({
         width: Math.max(20, node.width() * node.scaleX()),
         height: Math.max(20, node.height() * node.scaleY()),
       });
-      
+
       // Reset scale after updating width and height
       node.scaleX(1);
       node.scaleY(1);
@@ -370,9 +438,9 @@ const Canvas = ({
   // Convert points array to flat array for konva Line - memoized
   const pointsToFlatArray = useCallback((points, x, y, scaleX = 1, scaleY = 1) => {
     if (!points || !Array.isArray(points)) return [];
-    
+
     return points.flatMap(point => [
-      (point.x * scaleX) + x, 
+      (point.x * scaleX) + x,
       (point.y * scaleY) + y
     ]);
   }, []);
@@ -388,9 +456,23 @@ const Canvas = ({
         image={image}
         width={element.width}
         height={element.height}
-        draggable
-        perfectDrawEnabled={false} // Performance optimization
-        onDragStart={handleDragStart}
+        draggable={true}  // Ensure draggable is true
+        perfectDrawEnabled={false}
+        onDragStart={(e) => {
+          // Prevent default browser drag behavior
+          e.evt.preventDefault();
+          handleDragStart(e);
+        }}
+        onDragMove={(e) => {
+          // Update position during drag
+          e.evt.preventDefault();
+          const node = e.target;
+          handleElementChange({
+            ...element,
+            x: node.x(),
+            y: node.y(),
+          });
+        }}
         onDragEnd={handleDragEnd}
         onTransformEnd={handleTransformEnd}
         shadowColor="rgba(0,0,0,0.2)"
@@ -399,12 +481,12 @@ const Canvas = ({
         shadowOffsetY={selectedElement && selectedElement.id === element.id ? 3 : 0}
       />
     );
-  }, [handleDragStart, handleDragEnd, handleTransformEnd, selectedElement]);
+  }, [handleDragStart, handleDragEnd, handleTransformEnd, selectedElement, handleElementChange]);
 
   // Simple cursor component for better performance (from second file)
   const VirtualCursor = useCallback(() => {
     if (!cursorPosition || !cursorPosition.x || !cursorPosition.y) return null;
-    
+
     return (
       <Circle
         x={cursorPosition.x}
@@ -502,7 +584,7 @@ const Canvas = ({
         // Render custom shape using Line component
         const scaleX = element.scaleX || 1;
         const scaleY = element.scaleY || 1;
-        
+
         return (
           <Line
             key={element.id}
@@ -532,72 +614,25 @@ const Canvas = ({
     });
   }, [elements, selectedElement, handleDragStart, handleDragEnd, handleTransformEnd, pointsToFlatArray, CanvasImage]);
 
-  const extractColorsFromImage = useCallback((image) => {
-    if (!image) return [];
-    
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = image.width;
-    canvas.height = image.height;
-    ctx.drawImage(image, 0, 0);
-    
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    const colors = new Set();
-    
-    // Sample colors from the image
-    for (let i = 0; i < data.length; i += 4) {
-      if (i % 100 === 0) { // Sample every 100th pixel for performance
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const a = data[i + 3];
-        
-        if (a > 0) { // Only include non-transparent colors
-          const color = `rgba(${r},${g},${b},${a/255})`;
-          colors.add(color);
-        }
-      }
-    }
-    
-    return Array.from(colors).slice(0, 10); // Limit to 10 colors
-  }, []);
-
-  const handleColorSelect = useCallback((color) => {
-    setSelectedColor(color);
-    if (selectedElement && selectedElement.type !== 'image') {
-      const updatedElement = {
-        ...selectedElement,
-        fill: color
-      };
-      handleElementChange(updatedElement);
-    }
-  }, [selectedElement, handleElementChange]);
-
-  // Update extracted colors when image is selected
-  useEffect(() => {
-    if (selectedElement && selectedElement.type === 'image' && selectedElement.image) {
-      const colors = extractColorsFromImage(selectedElement.image);
-      setExtractedColors(colors);
-    } else {
-      setExtractedColors([]);
-    }
-  }, [selectedElement, extractColorsFromImage]);
-
   return (
-    <div className="flex">
+    <div
+      className="w-full h-full bg-white"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <Stage
         ref={stageRef}
         width={stageSize.width}
         height={stageSize.height}
-        draggable={true}
+        onClick={handleSelectElement}
+        onTap={handleSelectElement}
       >
         <Layer>
           {renderedElements}
-          
+
           {/* Display virtual cursor for hand tracking if available */}
           {cursorPosition && <VirtualCursor />}
-          
+
           {selectedElement && (
             <Transformer
               ref={transformerRef}
@@ -620,14 +655,6 @@ const Canvas = ({
           )}
         </Layer>
       </Stage>
-      {extractedColors.length > 0 && (
-        <div className="ml-4 p-4 border rounded-lg">
-          <ColorPalette 
-            colors={extractedColors} 
-            onColorSelect={handleColorSelect}
-          />
-        </div>
-      )}
     </div>
   );
 };

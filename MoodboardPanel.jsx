@@ -235,16 +235,16 @@ const MoodboardPanel = ({ theme, onThemeChange, onImageSelect, selectedCanvasEle
 
   return (
     <motion.div
-      initial={{ width: 300, translateX: 0 }}
+      initial={{ width: "100%", translateX: 0 }}
       animate={{ 
-        width: isPanelOpen ? 300 : 50,
-        translateX: isPanelOpen ? -70 : 0,
+        width: isPanelOpen ? "100%" : "50px",
+        translateX: isPanelOpen ? 0 : 0,
       }}
       className="bg-white border-l border-gray-200 h-full overflow-hidden flex"
     >
       <motion.button
         onClick={() => setIsPanelOpen(!isPanelOpen)}
-        className="h-full w-10 bg-gray-100 flex items-center justify-center"
+        className="h-full w-10 bg-gray-100 flex items-center justify-center z-10"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -263,7 +263,7 @@ const MoodboardPanel = ({ theme, onThemeChange, onImageSelect, selectedCanvasEle
       </motion.button>
 
       {isPanelOpen && (
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-2 sm:p-4">
           <div className="mb-6">
             <h2 className="text-lg font-bold mb-3">Theme</h2>
             <select
@@ -332,11 +332,11 @@ const MoodboardPanel = ({ theme, onThemeChange, onImageSelect, selectedCanvasEle
                 <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-2">
                 {images.map((img) => (
                   <div 
                     key={img.id} 
-                    className={`bg-gray-100 rounded overflow-hidden cursor-pointer hover:opacity-80 ${
+                    className={`aspect-square bg-gray-100 rounded overflow-hidden cursor-pointer hover:opacity-80 ${
                       selectedImage && selectedImage.id === img.id ? 'ring-2 ring-blue-500' : ''
                     }`}
                     onClick={() => handleImageClick(img)}
@@ -345,7 +345,7 @@ const MoodboardPanel = ({ theme, onThemeChange, onImageSelect, selectedCanvasEle
                       id={`image-${img.id}`}
                       src={img.url} 
                       alt={img.alt} 
-                      className="w-full h-auto" 
+                      className="w-full h-full object-cover" 
                       crossOrigin="Anonymous"
                       onLoad={(e) => handleImageLoad(e, img.id)}
                     />
